@@ -8,4 +8,4 @@ app.register_blueprint(saos_api_blueprint, url_prefix='/saos_api')
 app.register_blueprint(gpt_api_blueprint, url_prefix='/gpt_api')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
