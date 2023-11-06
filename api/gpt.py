@@ -1,8 +1,11 @@
 import openai
 import requests
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required
+
+from utils.html_parser import split_text, split_text_reverse, split_text_reverse1
+
 from utils.constants import SAOS_API_URL, OPEN_AI_KEY
-from utils.html_parser import html_parser
 
 gpt_api_blueprint = Blueprint("gpt", __name__)
 
@@ -10,16 +13,36 @@ openai.api_key = OPEN_AI_KEY
 
 
 @gpt_api_blueprint.route("/fetch", methods=['POST'])
+@jwt_required()
 def index():
     query_params = request.get_json()
-    return jsonify({'status': 'ok'})
+    justification_to_generate = query_params.get('justification_to_generate')
 
-    # response = openai.ChatCompletion.create( model="gpt-3.5-turbo", messages=[ {"role": "system", "content": "You
-    # are a legal advisor tasked with writing a legal opinion or reasoning " "for a court case."}, {"role": "user",
-    # "content": "Please draft the beginning of reasoning for the court's decision in the case " "of Smith v.
-    # Johnson. "}, ] )
-    #
-    # return response
+    saos_url = build_url(query_params)
+    empowering_justification = get_justification(saos_url)
+
+    introduction_to_generate = generate_justification_introduction(justification_to_generate,
+                                                                   split_text(empowering_justification))
+
+    justification_parts = [introduction_to_generate]
+
+    for i in range(5):
+        if i == 0:
+            justification_parts.append(
+                continue_generating_justification(justification_to_generate, introduction_to_generate))
+        else:
+            justification_parts.append(continue_generating_justification(justification_to_generate,
+                                                                         split_text_reverse(justification_parts[i])))
+    for i in range(3):
+        if i == 0:
+            justification_parts.append(finish_generating_justification(justification_to_generate, split_text_reverse(justification_parts[i+4])))
+        else:
+            justification_parts.append(continue_generating_justification(justification_to_generate, split_text_reverse1(justification_parts[i+4])))
+
+
+    final_justification = "\n".join(justification_parts)
+
+    return jsonify({'justification': final_justification})
 
 
 def build_url(query_params):
@@ -44,10 +67,46 @@ def build_url(query_params):
                                f"&keywords={keywords}&judgmentDateFrom={judgment_date_from}"
                                f"&judgmentDateTo={judgment_date_to}")
 
-    return get_justification(saos_url)
+    return saos_url
 
 
 def get_justification(saos_url):
     url_to_fetch = requests.get(saos_url).json()["items"][0].get("href")
 
-    return jsonify(html_parser(requests.get(url_to_fetch).json()["data"].get("textContent")))
+    return requests.get(url_to_fetch).json()["data"].get("textContent")
+
+
+def generate_justification_introduction(user_input, empowering_justification):
+    prompt = f"Wygeneruj wstęp uzasadnienia wyroku sadowego w temacie: {user_input}, zachowujac strukture orzeczenia, na podstawie fragmentu podanego uzasadnienia: {empowering_justification}"
+    response = openai.Completion.create(
+        engine="gpt-3.5-turbo-instruct",
+        prompt=prompt,
+        max_tokens=3500,
+        temperature=0.3
+    )
+
+    return response.choices[0].text
+
+
+def continue_generating_justification(user_input, justification_part):
+    prompt = f"Kontynuuj generowanie uzasadnienia wyroku sadowego w temacie: {user_input}, zaczynając od: {justification_part}"
+    response = openai.Completion.create(
+        engine="gpt-3.5-turbo-instruct",
+        prompt=prompt,
+        max_tokens=3500,
+        temperature=0.3
+    )
+
+    return response.choices[0].text
+
+def finish_generating_justification(user_input, justification_part):
+    prompt = f"Kontynuuj generowanie uzasadnienia wyroku sadowego w temacie: {user_input}, zacznij od 'Sąd zważył co następuje:' od: {justification_part}"
+    response = openai.Completion.create(
+        engine="gpt-3.5-turbo-instruct",
+        prompt=prompt,
+        max_tokens=3500,
+        temperature=0.3
+    )
+
+    return response.choices[0].text
+

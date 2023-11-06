@@ -1,6 +1,5 @@
 from flask import request, jsonify, Blueprint
-
-# from app import db
+from flask_jwt_extended import unset_jwt_cookies, create_access_token
 
 user_api_blueprint = Blueprint("user", __name__)
 
@@ -12,19 +11,27 @@ def register():
     if data['email'] == "test":
         return jsonify({'message': 'Registration successful'})
 
-    # if 'email' not in data or 'password' not in data:
-    #     return jsonify({'error': 'Missing email or password'}), 400
-    #
-    # email = data['email']
-    # password = data['password']
-    #
-    # existing_user = User.query.filter_by(email=email).first()
-    #
-    # if existing_user:
-    #     return jsonify({'error': 'Email already registered'}), 400
-    #
-    # new_user = User(email=email,password=password)
-    # db.session.add(new_user)
-    # db.session.commit()
-
     return jsonify({'message': 'Registration successful112'})
+
+
+@user_api_blueprint.route('/token', methods=["POST"])
+def create_token():
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+    if email != "test" or password != "test":
+        return {"msg": "Wrong email or password"}, 401
+
+    access_token = create_access_token(identity=email)
+
+    # Convert the bytes access_token to a string
+    token_string = access_token.decode('utf-8')
+
+    response = {"access_token": token_string}
+    return response
+
+
+@user_api_blueprint.route("/logout", methods=["POST"])
+def logout():
+    response = jsonify({"msg": "logout successful"})
+    unset_jwt_cookies(response)
+    return response
