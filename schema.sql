@@ -1,12 +1,12 @@
 CREATE TABLE user (
-    id CHAR(36) PRIMARY KEY,
-    username VARCHAR(80) UNIQUE NOT NULL,
-    password CHAR(60) NOT NULL
+    user_id INT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE justification (
-    id CHAR(36) PRIMARY KEY,
-    text TEXT,
-    user_id CHAR(36),
-    FOREIGN KEY (user_id) REFERENCES user(id)
+    justification_id INT PRIMARY KEY,
+    user_id INT,
+    justification_text TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES user(user_id)
 );
