@@ -1,2 +1,5 @@
+SECRET_KEY_VALUE = 'SECRET_KEY'
+GPT_ENGINE_VALUE = 'GPT_ENGINE'
+OPEN_AI_KEY_VALUE = 'OPEN_AI_KEY'
+JWT_SECRET_KEY_VALUE = 'JWT_SECRET_KEY'
 SAOS_API_URL = 'https://www.saos.org.pl/api/search/judgments?pageSize=10&pageNumber=0&sortingField=DATABASE_ID&sortingDirection=ASC'
-OPEN_AI_KEY = 'key'

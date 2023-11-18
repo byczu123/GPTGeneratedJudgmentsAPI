@@ -1,51 +1,58 @@
+import os
+import sqlite3
+
 import openai
 import requests
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
-from utils.html_parser import split_text, split_text_reverse, split_text_reverse1
-import sqlite3
-from utils.constants import SAOS_API_URL, OPEN_AI_KEY
+
+from utils.constants import SAOS_API_URL, GPT_ENGINE_VALUE
+from utils.gpt_constants import INTRODUCTION_PROMPT, MIDDLE_PART_PROMPT, FINISH_PART_PROMPT
+from utils.html_parser import split_text, split_text_reverse, split_text_reverse1, parse_html
+from utils.http_constants import JUSTIFICATION_FIELD, MESSAGE_FIELD, SUCCESSFUL_FEEDBACK_MESSAGE
 
 gpt_api_blueprint = Blueprint("gpt", __name__)
 
-openai.api_key = OPEN_AI_KEY
-
+gpt_engine = os.getenv(GPT_ENGINE_VALUE)
 
 @jwt_required()
-@gpt_api_blueprint.route("/fetch", methods=['POST'])
-def index():
+@gpt_api_blueprint.route("/query", methods=['POST'])
+def query_page_route():
     query_params = request.get_json()
     justification_to_generate = query_params.get('justification_to_generate')
 
     saos_url = build_url(query_params)
-    empowering_justification = get_justification(saos_url)
+    empowering_justification = parse_html(get_justification(saos_url))
 
-    introduction_to_generate = generate_justification_introduction(justification_to_generate,
-                                                                   split_text(empowering_justification))
+    introduction_to_generate = generate_justification(INTRODUCTION_PROMPT, justification_to_generate,
+                                                      split_text(empowering_justification))
 
     justification_parts = [introduction_to_generate]
 
-    for i in range(5):
-        if i == 0:
-            justification_parts.append(
-                continue_generating_justification(justification_to_generate, introduction_to_generate))
-        else:
-            justification_parts.append(continue_generating_justification(justification_to_generate,
-                                                                         split_text_reverse(justification_parts[i])))
     for i in range(3):
         if i == 0:
-            justification_parts.append(finish_generating_justification(justification_to_generate, split_text_reverse(justification_parts[i+4])))
+            justification_parts.append(
+                generate_justification(MIDDLE_PART_PROMPT, justification_to_generate, introduction_to_generate))
         else:
-            justification_parts.append(continue_generating_justification(justification_to_generate, split_text_reverse1(justification_parts[i+4])))
+            justification_parts.append(generate_justification(MIDDLE_PART_PROMPT, justification_to_generate,
+                                                              split_text_reverse(justification_parts[i])))
+    for i in range(3):
+        if i == 0:
+            justification_parts.append(generate_justification(FINISH_PART_PROMPT, justification_to_generate,
+                                                              split_text_reverse(justification_parts[i + 2])))
+        else:
+            justification_parts.append(generate_justification(FINISH_PART_PROMPT,
+                                                              justification_to_generate,
+                                                              split_text_reverse1(justification_parts[i + 2])))
 
     final_justification = "\n\n".join(justification_parts)
 
-    return jsonify({'justification': final_justification})
+    return jsonify({JUSTIFICATION_FIELD: final_justification})
 
 
 @jwt_required()
 @gpt_api_blueprint.route("/rate", methods=["POST"])
-def rate():
+def rate_page_route():
     if request.method == "POST":
         data = request.get_json()
 
@@ -55,20 +62,9 @@ def rate():
         user_id = 1
 
         insert_feedback(justification, feedback, rating, user_id)
-        return jsonify({'status': 'success', 'message': 'Feedback submitted successfully'}), 200
+        return jsonify({'status': 'success', MESSAGE_FIELD: SUCCESSFUL_FEEDBACK_MESSAGE}), 200
 
-    return jsonify({'status': 'Failure', 'message': 'Error has occured'}), 500
-
-
-def insert_feedback(text, feedback, rating, user_id):
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO justification (text, feedback, rate, user_id) VALUES (?, ?, ?, ?)',
-        (text, feedback, rating, user_id)
-    )
-    conn.commit()
-    conn.close()
+    return jsonify({'status': 'Failure', MESSAGE_FIELD: 'Error has occurred'}), 500
 
 
 def build_url(query_params):
@@ -96,45 +92,30 @@ def build_url(query_params):
     return saos_url
 
 
+def generate_justification(prompt, user_input, empowering_justification):
+    formatted_prompt = prompt.format(user_input, empowering_justification)
+    response = openai.Completion.create(
+        engine=gpt_engine,
+        prompt=formatted_prompt,
+        max_tokens=3500,
+        temperature=0.3
+    )
+
+    return response.choices[0].text
+
+
 def get_justification(saos_url):
     url_to_fetch = requests.get(saos_url).json()["items"][0].get("href")
 
     return requests.get(url_to_fetch).json()["data"].get("textContent")
 
 
-def generate_justification_introduction(user_input, empowering_justification):
-    prompt = (f"Wygeneruj wstęp uzasadnienia wyroku sadowego w temacie: {user_input}, zachowujac strukture orzeczenia, "
-              f"na podstawie fragmentu podanego uzasadnienia: {empowering_justification}")
-    response = openai.Completion.create(
-        engine="gpt-3.5-turbo-instruct",
-        prompt=prompt,
-        max_tokens=3500,
-        temperature=0.3
+def insert_feedback(text, feedback, rating, user_id):
+    conn = sqlite3.connect('../database.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO justification (text, feedback, rate, user_id) VALUES (?, ?, ?, ?)',
+        (text, feedback, rating, user_id)
     )
-
-    return response.choices[0].text
-
-
-def continue_generating_justification(user_input, justification_part):
-    prompt = f"Kontynuuj generowanie uzasadnienia wyroku sadowego w temacie: {user_input}, zaczynając od: {justification_part}"
-    response = openai.Completion.create(
-        engine="gpt-3.5-turbo-instruct",
-        prompt=prompt,
-        max_tokens=3500,
-        temperature=0.3
-    )
-
-    return response.choices[0].text
-
-
-def finish_generating_justification(user_input, justification_part):
-    prompt = (f"Kontynuuj generowanie uzasadnienia wyroku sadowego w temacie: {user_input}, zacznij od 'Sąd zważył co "
-              f"następuje:' od: {justification_part}")
-    response = openai.Completion.create(
-        engine="gpt-3.5-turbo-instruct",
-        prompt=prompt,
-        max_tokens=3500,
-        temperature=0.3
-    )
-
-    return response.choices[0].text
+    conn.commit()
+    conn.close()

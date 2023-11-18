@@ -1,24 +1,15 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import unset_jwt_cookies, create_access_token, decode_token
 import sqlite3
-
 from jwt import ExpiredSignatureError
+from utils.http_constants import MESSAGE_FIELD, INVALID_CREDENTIALS_MESSAGE, ACCESS_TOKEN_FIELD, AUTHORIZATION_HEADER, \
+    BEARER_FIELD, SUCCESSFUL_LOGOUT_MESSAGE, VALID_FIELD, EXPIRED_TOKEN_MESSAGE, TOKEN_NOT_PROVIDED_MESSAGE
 
 user_api_blueprint = Blueprint("user", __name__)
 
 
-@user_api_blueprint.route("/register", methods=["POST"])
-def register():
-    data = request.get_json()
-
-    if data['email'] == "test":
-        return jsonify({'message': 'Registration successful'})
-
-    return jsonify({'message': 'Registration successful112'})
-
-
 @user_api_blueprint.route('/token', methods=["POST"])
-def create_token():
+def create_token_route():
     if request.method == 'POST':
         email = request.json.get("email", None)
         password = request.json.get("password", None)
@@ -26,57 +17,45 @@ def create_token():
         user = query_user(email, password)
 
         if user:
-            access_token = create_access_token(identity=email)
-            token_string = access_token.decode('utf-8')
-            return {"access_token": token_string}
+            return {ACCESS_TOKEN_FIELD: create_access_token(identity=email)}
 
         else:
-            return {"msg": "Wrong email or password"}, 401
+            return {MESSAGE_FIELD: INVALID_CREDENTIALS_MESSAGE}, 401
 
 
 @user_api_blueprint.route('/validate-token', methods=['POST'])
 def validate_token_route():
-    authorization_header = request.headers.get('Authorization')
+    authorization_header = request.headers.get(AUTHORIZATION_HEADER)
 
-    if authorization_header and authorization_header.startswith('Bearer '):
+    if authorization_header and authorization_header.startswith(BEARER_FIELD):
         token = authorization_header.split(' ')[1]
 
         try:
             decoded_token = decode_token(token)
+            return jsonify({VALID_FIELD: True, MESSAGE_FIELD: decoded_token['sub']}), 200
 
-            return jsonify({"valid": True, "identity": decoded_token['sub']}), 200
         except Exception as e:
-            return jsonify({"valid": False, "error": str(e)}), 401
+            return jsonify({VALID_FIELD: False, MESSAGE_FIELD: str(e)}), 401
+
         except ExpiredSignatureError:
-            return jsonify({"valid": False, "msg": "Token has expired"}), 401
+            return jsonify({VALID_FIELD: False, MESSAGE_FIELD: EXPIRED_TOKEN_MESSAGE}), 401
+
     else:
-        return jsonify({"msg": "Token not provided"}), 400
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 400
 
 
 @user_api_blueprint.route("/logout", methods=["POST"])
 def logout():
-    response = jsonify({"msg": "logout successful"})
+    response = jsonify({MESSAGE_FIELD: SUCCESSFUL_LOGOUT_MESSAGE})
     unset_jwt_cookies(response)
-    return response
+    return response, 200
 
 
 def query_user(email, password):
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM user WHERE email=? AND password=?', (email, password))
-        user = cursor.fetchone()
-        conn.close()
+    conn = sqlite3.connect('../database.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM user WHERE email=? AND password=?', (email, password))
+    user = cursor.fetchone()
+    conn.close()
 
-        return user
-
-
-def validate_token(token):
-    try:
-        # Decode the token to check its validity
-        decoded_token = decode_token(token)
-
-        # If the decoding is successful, the token is valid
-        return {"valid": True, "identity": decoded_token['identity']}
-    except Exception as e:
-        # If decoding fails, the token is invalid
-        return {"valid": False, "error": str(e)}
+    return user
