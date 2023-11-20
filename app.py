@@ -30,4 +30,4 @@ app.register_blueprint(gpt_api_blueprint, url_prefix='/gpt')
 app.register_blueprint(user_api_blueprint, url_prefix='/user')
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host="0.0.0.0", port=5000)
