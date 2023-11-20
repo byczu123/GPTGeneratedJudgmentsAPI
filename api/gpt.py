@@ -116,7 +116,7 @@ def build_url(query_params):
 def generate_justification(prompt, user_input, empowering_justification):
     formatted_prompt = prompt.format(user_input, empowering_justification)
     response = openai.Completion.create(
-        engine=gpt_engine,
+        engine="gpt-3.5-turbo-instruct",
         prompt=formatted_prompt,
         max_tokens=3500,
         temperature=0.3
