@@ -10,4 +10,5 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "app.py"]
+
+CMD ["uvicorn", "--host", "0.0.0.0", "--port", "5000", "app:app"]
