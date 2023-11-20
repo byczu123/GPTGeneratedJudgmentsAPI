@@ -4,20 +4,33 @@ import sqlite3
 import openai
 import requests
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, decode_token
+from jwt import ExpiredSignatureError
 
 from utils.constants import SAOS_API_URL, GPT_ENGINE_VALUE
 from utils.gpt_constants import INTRODUCTION_PROMPT, MIDDLE_PART_PROMPT, FINISH_PART_PROMPT
-from utils.html_parser import split_text, split_text_reverse, split_text_reverse1, parse_html
-from utils.http_constants import JUSTIFICATION_FIELD, MESSAGE_FIELD, SUCCESSFUL_FEEDBACK_MESSAGE
+from utils.html_parser import extract_last_sentences, parse_html, extract_first_sentences
+from utils.http_constants import (JUSTIFICATION_FIELD, MESSAGE_FIELD, SUCCESSFUL_FEEDBACK_MESSAGE,
+                                  AUTHORIZATION_HEADER,
+                                  BEARER_FIELD, TOKEN_NOT_PROVIDED_MESSAGE, METHOD_NOT_ALLOWED_MESSAGE,
+                                  INVALID_TOKEN_MESSAGE)
 
 gpt_api_blueprint = Blueprint("gpt", __name__)
 
 gpt_engine = os.getenv(GPT_ENGINE_VALUE)
 
+
 @jwt_required()
 @gpt_api_blueprint.route("/query", methods=['POST'])
 def query_page_route():
+    if request.method != "POST":
+        return jsonify({MESSAGE_FIELD: METHOD_NOT_ALLOWED_MESSAGE}), 405
+    authorization_header = request.headers.get(AUTHORIZATION_HEADER)
+    if authorization_header is None:
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
+    if validate_token(authorization_header) is False:
+        return jsonify({MESSAGE_FIELD: INVALID_TOKEN_MESSAGE}), 401
+
     query_params = request.get_json()
     justification_to_generate = query_params.get('justification_to_generate')
 
@@ -25,7 +38,7 @@ def query_page_route():
     empowering_justification = parse_html(get_justification(saos_url))
 
     introduction_to_generate = generate_justification(INTRODUCTION_PROMPT, justification_to_generate,
-                                                      split_text(empowering_justification))
+                                                      extract_first_sentences(empowering_justification, 10))
 
     justification_parts = [introduction_to_generate]
 
@@ -35,36 +48,44 @@ def query_page_route():
                 generate_justification(MIDDLE_PART_PROMPT, justification_to_generate, introduction_to_generate))
         else:
             justification_parts.append(generate_justification(MIDDLE_PART_PROMPT, justification_to_generate,
-                                                              split_text_reverse(justification_parts[i])))
+                                                              extract_last_sentences(justification_parts[i], -8)
+                                                              ))
     for i in range(3):
         if i == 0:
             justification_parts.append(generate_justification(FINISH_PART_PROMPT, justification_to_generate,
-                                                              split_text_reverse(justification_parts[i + 2])))
+                                                              extract_last_sentences(
+                                                                  justification_parts[i + 2], -8)
+                                                              ))
         else:
             justification_parts.append(generate_justification(FINISH_PART_PROMPT,
                                                               justification_to_generate,
-                                                              split_text_reverse1(justification_parts[i + 2])))
+                                                              extract_last_sentences(
+                                                                  justification_parts[i + 2], -5)
+                                                              ))
 
-    final_justification = "\n\n".join(justification_parts)
-
-    return jsonify({JUSTIFICATION_FIELD: final_justification})
+        final_justification = "\n\n".join(justification_parts)
+        return jsonify({JUSTIFICATION_FIELD: final_justification})
 
 
 @jwt_required()
 @gpt_api_blueprint.route("/rate", methods=["POST"])
 def rate_page_route():
-    if request.method == "POST":
-        data = request.get_json()
+    if request.method != "POST":
+        return jsonify({MESSAGE_FIELD: METHOD_NOT_ALLOWED_MESSAGE}), 405
+    authorization_header = request.headers.get(AUTHORIZATION_HEADER)
+    if authorization_header is None:
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
+    if validate_token(authorization_header) is False:
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
+    data = request.get_json()
 
-        justification = data.get('justification')
-        feedback = data.get('feedback')
-        rating = data.get('rating')
-        user_id = 1
+    justification = data.get('justification')
+    feedback = data.get('feedback')
+    rating = data.get('rating')
+    user_id = 1
 
-        insert_feedback(justification, feedback, rating, user_id)
-        return jsonify({'status': 'success', MESSAGE_FIELD: SUCCESSFUL_FEEDBACK_MESSAGE}), 200
-
-    return jsonify({'status': 'Failure', MESSAGE_FIELD: 'Error has occurred'}), 500
+    insert_feedback(justification, feedback, rating, user_id)
+    return jsonify({'status': 'success', MESSAGE_FIELD: SUCCESSFUL_FEEDBACK_MESSAGE}), 200
 
 
 def build_url(query_params):
@@ -111,7 +132,7 @@ def get_justification(saos_url):
 
 
 def insert_feedback(text, feedback, rating, user_id):
-    conn = sqlite3.connect('../database.db')
+    conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     cursor.execute(
         'INSERT INTO justification (text, feedback, rate, user_id) VALUES (?, ?, ?, ?)',
@@ -119,3 +140,24 @@ def insert_feedback(text, feedback, rating, user_id):
     )
     conn.commit()
     conn.close()
+
+
+def validate_token(authorization_header):
+    if authorization_header and authorization_header.startswith(BEARER_FIELD):
+        token = authorization_header.split(' ')[1]
+        try:
+            decode_token(token)
+            return True
+        except ExpiredSignatureError:
+            return False
+    else:
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
+
+def validate():
+    if request.method != "POST":
+        return jsonify({MESSAGE_FIELD: METHOD_NOT_ALLOWED_MESSAGE}), 405
+    authorization_header = request.headers.get(AUTHORIZATION_HEADER)
+    if authorization_header is None:
+        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
+    if validate_token(authorization_header) is False:
+        return jsonify({MESSAGE_FIELD: INVALID_TOKEN_MESSAGE}), 401
