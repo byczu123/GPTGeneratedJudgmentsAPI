@@ -1,7 +1,7 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import unset_jwt_cookies, create_access_token, decode_token
 import sqlite3
-from jwt import ExpiredSignatureError
+from jwt.exceptions import ExpiredSignatureError
 from utils.http_constants import MESSAGE_FIELD, INVALID_CREDENTIALS_MESSAGE, ACCESS_TOKEN_FIELD, AUTHORIZATION_HEADER, \
     BEARER_FIELD, SUCCESSFUL_LOGOUT_MESSAGE, VALID_FIELD, EXPIRED_TOKEN_MESSAGE, TOKEN_NOT_PROVIDED_MESSAGE, \
     METHOD_NOT_ALLOWED_MESSAGE

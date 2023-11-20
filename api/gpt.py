@@ -5,7 +5,7 @@ import openai
 import requests
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, decode_token
-from jwt import ExpiredSignatureError
+from jwt.exceptions import ExpiredSignatureError
 
 from utils.constants import SAOS_API_URL, GPT_ENGINE_VALUE
 from utils.gpt_constants import INTRODUCTION_PROMPT, MIDDLE_PART_PROMPT, FINISH_PART_PROMPT
@@ -127,7 +127,8 @@ def generate_justification(prompt, user_input, empowering_justification):
 
 def get_justification(saos_url):
     url_to_fetch = requests.get(saos_url).json()["items"][0].get("href")
-
+    if url_to_fetch is None:
+        return jsonify({MESSAGE_FIELD: "Justfication not found"}), 200
     return requests.get(url_to_fetch).json()["data"].get("textContent")
 
 
