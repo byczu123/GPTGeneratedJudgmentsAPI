@@ -152,12 +152,3 @@ def validate_token(authorization_header):
             return False
     else:
         return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
-
-def validate():
-    if request.method != "POST":
-        return jsonify({MESSAGE_FIELD: METHOD_NOT_ALLOWED_MESSAGE}), 405
-    authorization_header = request.headers.get(AUTHORIZATION_HEADER)
-    if authorization_header is None:
-        return jsonify({MESSAGE_FIELD: TOKEN_NOT_PROVIDED_MESSAGE}), 401
-    if validate_token(authorization_header) is False:
-        return jsonify({MESSAGE_FIELD: INVALID_TOKEN_MESSAGE}), 401
